@@ -1,0 +1,108 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Assumed collections:
+    // users/{uid}: uid, email, full_name, developer_role, experience_level,
+    //   preferred_languages, preferred_model?, development_environment?,
+    //   github_username?, created_at, updated_at.
+    // workspaces/{id}: owner_uid, name, description, created_at, updated_at.
+    // projects/{id}: owner_uid, workspace_id, name, purpose, language,
+    //   framework?, repository_url?, created_at, updated_at.
+    // All writes go through the authenticated FastAPI server using Firebase
+    // Admin. Rules deny client writes and expose only owner-scoped document reads.
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function validText(value, minLength, maxLength) {
+      return value is string && value.size() >= minLength && value.size() <= maxLength;
+    }
+
+    function validOptionalText(data, field, maxLength) {
+      return !(field in data) || data[field] == null ||
+        (data[field] is string && data[field].size() <= maxLength);
+    }
+
+    function isValidUserProfile(data, uid) {
+      return data.keys().hasAll([
+          'uid', 'email', 'full_name', 'developer_role', 'experience_level',
+          'preferred_languages', 'created_at', 'updated_at'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'email', 'full_name', 'developer_role', 'experience_level',
+          'preferred_languages', 'preferred_model', 'development_environment',
+          'github_username', 'created_at', 'updated_at'
+        ]) &&
+        data.uid == uid &&
+        (data.email == null || validText(data.email, 3, 254)) &&
+        validText(data.full_name, 2, 120) &&
+        data.developer_role in ['student', 'developer', 'ai_engineer', 'technical_lead', 'other'] &&
+        data.experience_level in ['beginner', 'intermediate', 'advanced'] &&
+        data.preferred_languages is list &&
+        data.preferred_languages.size() >= 1 &&
+        data.preferred_languages.size() <= 10 &&
+        data.preferred_languages.hasOnly([
+          'Python', 'TypeScript', 'JavaScript', 'Java', 'Go', 'Rust', 'C#',
+          'C++', 'Swift', 'Kotlin', 'Other'
+        ]) &&
+        validOptionalText(data, 'preferred_model', 100) &&
+        validOptionalText(data, 'development_environment', 200) &&
+        validOptionalText(data, 'github_username', 39) &&
+        data.created_at is timestamp && data.updated_at is timestamp;
+    }
+
+    function isValidWorkspace(data, workspaceId) {
+      return data.keys().hasAll(['owner_uid', 'name', 'description', 'created_at', 'updated_at']) &&
+        data.keys().hasOnly(['owner_uid', 'name', 'description', 'created_at', 'updated_at']) &&
+        validText(data.owner_uid, 1, 128) &&
+        validText(data.name, 2, 80) &&
+        validText(data.description, 0, 500) &&
+        data.created_at is timestamp && data.updated_at is timestamp &&
+        workspaceId.size() >= 1;
+    }
+
+    function isValidProject(data, projectId, uid) {
+      let workspacePath = /databases/$(database)/documents/workspaces/$(data.workspace_id);
+      return data.keys().hasAll([
+          'owner_uid', 'workspace_id', 'name', 'purpose', 'language', 'created_at', 'updated_at'
+        ]) &&
+        data.keys().hasOnly([
+          'owner_uid', 'workspace_id', 'name', 'purpose', 'language', 'framework',
+          'repository_url', 'created_at', 'updated_at'
+        ]) &&
+        data.owner_uid == uid &&
+        validText(data.workspace_id, 1, 128) &&
+        validText(data.name, 2, 100) &&
+        validText(data.purpose, 1, 1000) &&
+        validText(data.language, 1, 32) &&
+        validOptionalText(data, 'framework', 64) &&
+        validOptionalText(data, 'repository_url', 2048) &&
+        data.created_at is timestamp && data.updated_at is timestamp &&
+        exists(workspacePath) && get(workspacePath).data.owner_uid == uid &&
+        projectId.size() >= 1;
+    }
+
+    match /users/{uid} {
+      allow get: if isOwner(uid) && isValidUserProfile(resource.data, uid);
+    }
+
+    match /workspaces/{workspaceId} {
+      allow get: if isOwner(resource.data.owner_uid) && isValidWorkspace(resource.data, workspaceId);
+    }
+
+    match /projects/{projectId} {
+      allow get: if isOwner(resource.data.owner_uid) &&
+        isValidProject(resource.data, projectId, request.auth.uid);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

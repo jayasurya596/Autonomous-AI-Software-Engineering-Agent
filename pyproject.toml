@@ -1,0 +1,59 @@
+[project]
+name = "autonomous-ai-software-engineering-agent"
+version = "0.1.0"
+description = "A verifiable, human-approved AI software engineering workflow."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "pydantic-settings>=2.7,<3",
+    "uvicorn[standard]>=0.34,<1",
+    "cryptography>=44,<47",
+]
+
+[project.optional-dependencies]
+agents = [
+    "langgraph>=0.2,<2",
+    "langgraph-checkpoint-postgres>=3,<4",
+    "ollama>=0.4,<1",
+]
+firebase = [
+    "firebase-admin>=6,<8",
+]
+database = [
+    "pgvector>=0.3,<1",
+    "psycopg[binary]>=3.2,<4",
+    "sqlalchemy[asyncio]>=2,<3",
+]
+git = [
+    "GitPython>=3.1,<4",
+]
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1",
+    "mypy>=1.14,<2",
+    "pytest>=8.3,<10",
+    "ruff>=0.9,<1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["backend/app"]
+mypy_path = "backend"
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = ["firebase_admin", "firebase_admin.*"]
+ignore_missing_imports = true

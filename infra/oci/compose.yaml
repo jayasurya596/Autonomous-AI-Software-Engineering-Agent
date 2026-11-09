@@ -1,0 +1,155 @@
+name: autonomous-ai-software-engineering-agent
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-software_agent}
+      POSTGRES_USER: ${POSTGRES_USER:-software_agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a random hex-only POSTGRES_PASSWORD in .env.oci}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 768M
+    networks: [private]
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 6G
+    networks: [private]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/oci/Dockerfile.api
+    image: autonomous-agent-api:oci
+    restart: unless-stopped
+    env_file:
+      - ../../.env.oci
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-software_agent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.oci}@postgres:5432/${POSTGRES_DB:-software_agent}
+      OLLAMA_BASE_URL: http://ollama:11434
+      AGENT_REPOSITORIES_ROOT: /app/repositories
+      SANDBOX_PYTHON_IMAGE: agent-sandbox-python:oci
+      SANDBOX_NODE_IMAGE: agent-sandbox-node:oci
+      FIREBASE_ADMIN_CREDENTIALS_PATH: /run/secrets/firebase-admin.json
+      FIREBASE_AUTH_EMULATOR_HOST: ""
+      FIRESTORE_EMULATOR_HOST: ""
+      TMPDIR: ${SANDBOX_SHARED_PATH:?Set SANDBOX_SHARED_PATH to an absolute host path}
+      HOME: /tmp
+    group_add:
+      - ${DOCKER_GID:?Set DOCKER_GID to the host Docker socket's numeric group ID}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agent_repositories:/app/repositories
+      - ${SANDBOX_SHARED_PATH:?Set SANDBOX_SHARED_PATH to an absolute host path}:${SANDBOX_SHARED_PATH:?Set SANDBOX_SHARED_PATH to an absolute host path}
+      - ${FIREBASE_ADMIN_KEY_FILE:?Set FIREBASE_ADMIN_KEY_FILE to the Firebase Admin JSON key}:/run/secrets/firebase-admin.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.40"
+          memory: 1536M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [private]
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/oci/Dockerfile.web
+      args:
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:?Set the Firebase web API key in .env.oci}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:?Set the Firebase auth domain in .env.oci}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:?Set the Firebase project ID in .env.oci}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:?Set the Firebase app ID in .env.oci}
+        VITE_FIREBASE_GOOGLE_AUTH_ENABLED: ${VITE_FIREBASE_GOOGLE_AUTH_ENABLED:-false}
+    image: autonomous-agent-web:oci
+    restart: unless-stopped
+    depends_on: [api]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 256M
+    networks: [private]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN to the public hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web, api]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 128M
+    networks: [private]
+
+  sandbox-python:
+    profiles: [image-build]
+    build:
+      context: ../..
+      dockerfile: infra/sandbox/python/Dockerfile
+    image: agent-sandbox-python:oci
+
+  sandbox-node:
+    profiles: [image-build]
+    build:
+      context: ../..
+      dockerfile: infra/sandbox/node/Dockerfile
+    image: agent-sandbox-node:oci
+
+volumes:
+  postgres_data:
+  ollama_data:
+  agent_repositories:
+  caddy_data:
+  caddy_config:
+
+networks:
+  private:
+    driver: bridge

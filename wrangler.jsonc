@@ -1,0 +1,60 @@
+{
+  "name": "autonomous-ai-software-engineering-agent",
+  "main": "./infra/cloudflare/worker.js",
+  "compatibility_date": "2026-11-09",
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+    "issues": {
+      "enabled": true
+    },
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "r2_buckets": [
+    {
+      "binding": "REPOSITORIES",
+      "bucket_name": "agent-swe-repositories"
+    }
+  ],
+  "vars": {
+    "R2_BUCKET_NAME": "agent-swe-repositories"
+  },
+  "assets": {
+    "directory": "./frontend/dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "single-page-application"
+  },
+  "containers": [
+    {
+      "class_name": "ApiContainer",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": {
+          "dockerfile": "./infra/cloudflare/Dockerfile",
+          "build_context": "."
+        }
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "API_CONTAINER",
+        "class_name": "ApiContainer"
+      }
+    ]
+  },
+  "exports": {
+    "ApiContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}

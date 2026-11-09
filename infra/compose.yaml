@@ -1,0 +1,22 @@
+name: autonomous-ai-software-engineering-agent
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-software_agent}
+      POSTGRES_USER: ${POSTGRES_USER:-software_agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  postgres_data:

@@ -1,0 +1,41 @@
+# Local secrets and environment
+.env
+.env.*
+!.env.example
+!.env.oci.example
+!.env.cloudflare.example
+*.pem
+*.key
+service-account*.json
+.firebase/
+firebase-debug.log
+firestore-debug.log
+.runtimeconfig.json
+.tools/
+.codex/
+.wrangler-prebuilt.jsonc
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Frontend
+node_modules/
+frontend/dist/
+npm-debug.log*
+
+# Local data and editor/OS files
+postgres-data/
+.agent-repositories/
+.agent-staging/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
