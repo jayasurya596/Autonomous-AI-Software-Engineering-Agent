@@ -5,6 +5,8 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from firebase_admin import firestore
+from google.auth.credentials import AnonymousCredentials
+from google.cloud import firestore as google_firestore
 
 from app.core.auth import _get_firebase_app
 
@@ -20,6 +22,17 @@ def get_firestore_client() -> Any:
         )
 
     try:
+        if emulator_host:
+            project_id = os.getenv("FIREBASE_PROJECT_ID")
+            if not project_id:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Firestore is not configured for this Firebase project.",
+                )
+            return google_firestore.Client(
+                project=project_id,
+                credentials=AnonymousCredentials(),  # type: ignore[no-untyped-call]
+            )
         return firestore.client(app=_get_firebase_app())
     except HTTPException:
         raise
