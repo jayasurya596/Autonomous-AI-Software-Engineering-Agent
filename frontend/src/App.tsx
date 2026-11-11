@@ -683,7 +683,7 @@ function OnboardingPage() {
       .catch((caught) => {
         if (!active) return;
         if (axios.isAxiosError(caught) && caught.response?.status === 404) return;
-        setError("Could not load your profile. Start the API and check the Firestore emulator.");
+        setError(responseMessage(caught, "Could not load your profile. Please try again."));
       })
       .finally(() => {
         if (active) setLoaded(true);
@@ -722,9 +722,7 @@ function OnboardingPage() {
       });
       navigate("/app");
     } catch (caught) {
-      setError(axios.isAxiosError(caught)
-        ? "Could not save your profile. Check the API and Firestore emulator."
-        : authErrorMessage(caught));
+      setError(responseMessage(caught, "Could not save your profile. Please try again."));
     } finally {
       setBusy(false);
     }
